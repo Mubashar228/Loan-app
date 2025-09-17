@@ -1,3 +1,8 @@
 streamlit
 pandas
+fpdf
+matplotlib
+openpyxl
+requests
+python-dotenv
 sqlite-utils
