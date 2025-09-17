@@ -6,21 +6,17 @@ import random, string
 import os
 
 # --------------------------
-# Database Setup
+# Database Setup & Migration
 # --------------------------
 conn = sqlite3.connect("loans.db")
 c = conn.cursor()
 
+# Create table if not exists
 c.execute("""
 CREATE TABLE IF NOT EXISTS loans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
-    father_name TEXT,
     phone TEXT,
-    cnic TEXT,
-    address TEXT,
-    user_image_path TEXT,
-    cnic_image_path TEXT,
     amount REAL,
     interest REAL,
     total_payable REAL,
@@ -31,6 +27,20 @@ CREATE TABLE IF NOT EXISTS loans (
 )
 """)
 conn.commit()
+
+# 🆕 Add missing columns safely (schema migration)
+def add_column_if_not_exists(column_name, column_type):
+    try:
+        c.execute(f"ALTER TABLE loans ADD COLUMN {column_name} {column_type}")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+add_column_if_not_exists("father_name", "TEXT")
+add_column_if_not_exists("cnic", "TEXT")
+add_column_if_not_exists("address", "TEXT")
+add_column_if_not_exists("user_image_path", "TEXT")
+add_column_if_not_exists("cnic_image_path", "TEXT")
 
 # --------------------------
 # Helper Functions
@@ -54,16 +64,14 @@ def save_uploaded_file(uploaded_file, folder="uploads"):
     return None
 
 # --------------------------
-# App Title
+# Streamlit App
 # --------------------------
 st.set_page_config(page_title="Udhar Loan App", page_icon="💰", layout="wide")
 st.title("💰 Udhar (Loan) Management System")
 
 menu = st.sidebar.radio("📌 Select Option", ["Apply for Loan", "Admin - Approve Loans", "Repay Loan", "Loan History"])
 
-# --------------------------
 # Apply for Loan
-# --------------------------
 if menu == "Apply for Loan":
     st.header("📝 Apply for a New Loan")
     with st.form("loan_form"):
@@ -85,7 +93,6 @@ if menu == "Apply for Loan":
             if name.strip() == "" or phone.strip() == "" or cnic.strip() == "":
                 st.error("❌ Name, Phone, and CNIC are required!")
             else:
-                # Save uploaded images
                 user_img_path = save_uploaded_file(user_image)
                 cnic_img_path = save_uploaded_file(cnic_image)
 
@@ -99,59 +106,3 @@ if menu == "Apply for Loan":
                       amount, interest_rate, total_payable, "Pending", due_date, "Unpaid", None))
                 conn.commit()
                 st.success(f"✅ Loan Request Submitted! Total Payable: {total_payable} | Due Date: {due_date}")
-
-# --------------------------
-# Admin Panel - Approve/Reject Loans
-# --------------------------
-elif menu == "Admin - Approve Loans":
-    st.header("🛠 Admin Panel - Approve or Reject Loans")
-    status_filter = st.selectbox("Filter Loans by Status", ["Pending", "Approved", "Rejected"])
-    df = pd.read_sql(f"SELECT * FROM loans WHERE status='{status_filter}'", conn)
-    
-    if df.empty:
-        st.info("📭 No loans found for this status.")
-    else:
-        st.dataframe(df)
-        selected_id = st.selectbox("Select Loan ID to Approve/Reject", df["id"].tolist())
-        action = st.radio("Action", ["Approve ✅", "Reject ❌"])
-        if st.button("Submit Action"):
-            new_status = "Approved" if "Approve" in action else "Rejected"
-            c.execute("UPDATE loans SET status=? WHERE id=?", (new_status, selected_id))
-            conn.commit()
-            st.success(f"Loan {new_status} Successfully!")
-
-# --------------------------
-# Repay Loan (Payment Gateway Mockup)
-# --------------------------
-elif menu == "Repay Loan":
-    st.header("💵 Repay Your Loan")
-    phone = st.text_input("Enter Your Phone Number to Find Your Loans")
-    if phone:
-        df = pd.read_sql("SELECT * FROM loans WHERE phone=? AND status='Approved' AND payment_status='Unpaid'", conn, params=(phone,))
-        if df.empty:
-            st.info("✅ No unpaid approved loans found for this phone number.")
-        else:
-            st.dataframe(df)
-            selected_id = st.selectbox("Select Loan ID to Repay", df["id"].tolist())
-            payment_method = st.selectbox("Choose Payment Method", ["EasyPaisa", "JazzCash"])
-            
-            if st.button("💳 Make Payment"):
-                receipt = generate_receipt()
-                c.execute("UPDATE loans SET payment_status='Paid', receipt_no=? WHERE id=?", (receipt, selected_id))
-                conn.commit()
-                st.success(f"🎉 Payment Successful via {payment_method}!\n📄 Receipt No: {receipt}")
-
-# --------------------------
-# Loan History
-# --------------------------
-elif menu == "Loan History":
-    st.header("📜 Your Loan History")
-    phone = st.text_input("Enter Your Phone Number to View History")
-    if phone:
-        df = pd.read_sql("SELECT * FROM loans WHERE phone=?", conn, params=(phone,))
-        if df.empty:
-            st.info("No loans found for this phone number.")
-        else:
-            df["status"] = df["status"].apply(lambda x: "✅ Approved" if x=="Approved" else "⏳ Pending" if x=="Pending" else "❌ Rejected")
-            df["payment_status"] = df["payment_status"].apply(lambda x: "💰 Paid" if x=="Paid" else "🔴 Unpaid")
-            st.dataframe(df)
