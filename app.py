@@ -273,7 +273,8 @@ if page == "Signup / Login":
                     if verify_password(login_pass, row[4]):
                         st.session_state["user"] = {"id": row[0], "name": row[1], "phone": row[2], "email": row[3], "is_admin": row[5]}
                         st.success(f"Welcome {row[1]}")
-                        st.experimental_rerun()
+                        st.rerun()
+
                     else:
                         st.error("Invalid password.")
 
